@@ -1,3 +1,78 @@
+from joblib import dump, load
+def enhanced_correlation_feature_selection(processed_df):
+    """Enhanced correlation analysis, feature selection, and scaling."""
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    import numpy as np
+    from sklearn.preprocessing import StandardScaler
+    # Dimensionality reduction - Enhanced correlation analysis
+    plt.figure(figsize=(14, 12))
+    corr_matrix = processed_df.corr(numeric_only=True)
+    # Create mask for upper triangle
+    mask = np.triu(np.ones_like(corr_matrix, dtype=bool))
+    # Improved heatmap with clustering
+    sns.clustermap(
+        corr_matrix,
+        cmap='coolwarm',
+        vmin=-1,
+        vmax=1,
+        center=0,
+        annot=True,
+        fmt=".2f",
+        figsize=(14, 12),
+        row_cluster=True,
+        col_cluster=True,
+        mask=mask
+    )
+    plt.title('Hierarchically Clustered Correlation Matrix', fontsize=16)
+    plt.tight_layout()
+    plt.savefig('reports/clustered_correlation_matrix.png')
+    plt.close()
+    # Select features with highest correlation to academic risk
+    if 'academic_risk' in processed_df.columns:
+        risk_corr = corr_matrix['academic_risk'].abs().sort_values(ascending=False)[1:]  # Exclude self-correlation
+        print("\nTop Features Correlated with Academic Risk:")
+        print(risk_corr.head(10))
+        # Feature selection based on multicollinearity
+        selected_features = []
+        high_corr_pairs = set()
+        threshold = 0.7
+        for feature in risk_corr.index:
+            if feature in corr_matrix.columns:
+                if feature not in selected_features:
+                    redundant = False
+                    for selected in selected_features:
+                        if selected in corr_matrix.columns:
+                            corr_val = abs(corr_matrix.loc[feature, selected])
+                            if corr_val > threshold:
+                                high_corr_pairs.add((feature, selected, corr_val))
+                                redundant = True
+                                break
+                    if not redundant:
+                        selected_features.append(feature)
+        print(f"\nSelected {len(selected_features)} features after multicollinearity check:")
+        print(selected_features)
+        if high_corr_pairs:
+            print("\nExcluded features due to high correlation (>0.7):")
+            for pair in high_corr_pairs:
+                print(f"{pair[0]} - {pair[1]} (r={pair[2]:.2f})")
+        # Feature scaling with selected features
+        try:
+            X_selected = processed_df[selected_features]
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X_selected)
+            dump(scaler, 'models/scaler.joblib')
+            dump(selected_features, 'models/selected_features.joblib')
+            print("\nScaler and feature list saved for future inference")
+            return X_scaled, selected_features, scaler
+        except KeyError as e:
+            print(f"\nError during feature scaling: {e}")
+            print("Please ensure the selected features exist in the 'processed_df' DataFrame.")
+            return None, None, None
+    else:
+        print("Error: 'academic_risk' column not found in processed_df. Cannot perform correlation analysis.")
+        print("Please ensure the preprocessing step was run successfully.")
+        return None, None, None
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
